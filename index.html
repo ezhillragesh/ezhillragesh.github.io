@@ -7,9 +7,8 @@
 <meta name="description" content="Ezhill Ragesh is a software engineer in Chennai working on platforms, developer tooling and applied AI. Research and patents on retrieval-augmented generation and AI security.">
 <meta name="author" content="Ezhill Ragesh">
 <meta name="robots" content="index, follow, max-image-preview:large">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0a0a">
 <link rel="canonical" href="https://ezhillragesh.github.io/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="180x180">
@@ -68,22 +67,16 @@
 </script>
 <style>
   :root {
-    --bg: #ffffff;
-    --text: #1d1d1f;
-    --muted: #6e6e73;
-    --underline: #86868b;
-    --line: #d2d2d7;
-    --focus: #0066cc;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #0a0a0a;
-      --text: #f5f5f7;
-      --muted: #a1a1a6;
-      --underline: #6e6e73;
-      --line: #3a3a3c;
-      --focus: #4da3ff;
-    }
+    color-scheme: dark;
+    --bg: #0a0a0a;
+    --text: #f5f5f7;
+    --muted: #a1a1a6;
+    --underline: #8e8e93;
+    --line: #3a3a3c;
+    --focus: #4da3ff;
+    --sea-west: #173a34;
+    --sea-east: #18304d;
+    --sea-south: #25284a;
   }
 
   *, *::before, *::after { box-sizing: border-box; }
@@ -101,6 +94,15 @@
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+  }
+
+  .sea {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
   }
 
   .wrap {
@@ -234,6 +236,7 @@
 </style>
 </head>
 <body>
+<canvas class="sea" aria-hidden="true"></canvas>
 <header class="wrap top">
   <h1>Ezhill Ragesh</h1>
   <p class="lede">Software engineer · platforms, developer tooling, applied AI</p>
@@ -344,8 +347,248 @@
 
 <footer>
   <div class="wrap">
-    <p>Chennai, India. No JavaScript, no web fonts, no tracking.</p>
+    <p>The fish swim in the three seas that meet at Kanyakumari, where I’m from. Chennai, India.</p>
   </div>
 </footer>
+
+<script>
+// Pixel fish swimming over a faint sea: the Arabian Sea (west), the Bay of
+// Bengal (east) and the Indian Ocean (south), which meet at Kanyakumari.
+(() => {
+  const canvas = document.querySelector('.sea');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  const PITCH = 8, CELL = 6, FPS = 30;
+  // fish are drawn at 20% strength under the text so it keeps WCAG AA contrast
+  const DIM = [0.2, 0.45, 0.7, 1];
+  const FISH = { body: '#d4d4d4', shade: '#8f8f8f', orange: '#c8582b', deep: '#8a3a1c', fin: '#6f6f6f', eye: '#141414' };
+  let w, h, cols, rows, cx, column, raf = 0, last = 0, bg, sea, paint, fish = [];
+  let colWA, colEA, colPW, colPE, colSK, colSP, colDim;
+  const food = [];
+
+  const hex = (v) => [1, 3, 5].map((i) => parseInt(v.trim().slice(i, i + 2), 16));
+  const mix = (a, b, t) => `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(',')})`;
+
+  function readPalette() {
+    const css = getComputedStyle(document.documentElement);
+    const base = hex(css.getPropertyValue('--bg'));
+    bg = `rgb(${base})`;
+    sea = {};
+    for (const k of ['west', 'east', 'south']) {
+      const c = hex(css.getPropertyValue('--sea-' + k));
+      sea[k] = [0, 0.18, 0.28, 0.38].map((t) => mix(base, c, t));
+    }
+    paint = {};
+    for (const [k, v] of Object.entries(FISH)) paint[k] = DIM.map((t) => mix(base, hex(v), t));
+  }
+
+  function makeFish(i, n) {
+    const len = Math.min(w, h) < 600 ? 120 + Math.random() * 60 : 190 + Math.random() * 110, segs = 16;
+    const x = Math.random() * w, y = Math.random() * h, a = Math.random() * Math.PI * 2;
+    const pts = Array.from({ length: segs }, (_, k) => ({ x: x - Math.cos(a) * k * len / segs, y: y - Math.sin(a) * k * len / segs }));
+    return { pts, len, seg: len / segs, a, speed: 22 + Math.random() * 16, seed: i * 7.3 + Math.random() * 100, phase: Math.random() * 6 };
+  }
+
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    w = innerWidth; h = innerHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cols = Math.ceil(w / PITCH) + 1; rows = Math.ceil(h / PITCH) + 1;
+    cx = w / 2; column = Math.min(w, 640) / 2;
+    // per-column constants, so the sea loop only does three sines per cell
+    colWA = new Float32Array(cols); colEA = new Float32Array(cols); colPW = new Float32Array(cols);
+    colPE = new Float32Array(cols); colSK = new Float32Array(cols); colSP = new Float32Array(cols);
+    colDim = new Float32Array(cols);
+    for (let i = 0; i < cols; i++) {
+      const x = i * PITCH, nx = x / w;
+      colWA[i] = Math.max(0, 1 - nx * 1.6);
+      colEA[i] = Math.max(0, 1 - (1 - nx) * 1.6);
+      colPW[i] = x * 0.045; colPE[i] = -x * 0.04; colSK[i] = x * 0.01;
+      colDim[i] = dimAt(x) ? 1 : 0.5;
+    }
+    const n = Math.max(2, Math.min(5, Math.round((w * h) / 300000)));
+    while (fish.length < n) fish.push(makeFish(fish.length, n));
+    fish.length = n;
+  }
+
+  // how strongly to draw at x: faint under the reading column, full in the margins
+  function dimAt(x) {
+    const e = Math.abs(x - cx) / column;
+    return e < 1 ? 0 : e < 1.1 ? 1 : e < 1.2 ? 2 : 3;
+  }
+
+  function step(f, t, dt) {
+    const head = f.pts[0];
+    let want = f.a + Math.sin(t * 0.3 + f.seed) * 0.6 + Math.sin(t * 0.11 + f.seed * 2) * 0.8;
+    const target = food.find((p) => Math.hypot(p.x - head.x, p.y - head.y) < 420);
+    const m = 80;
+    if (target) want = Math.atan2(target.y - head.y, target.x - head.x);
+    else if (head.x < -m || head.x > w + m || head.y < -m || head.y > h + m) want = Math.atan2(h / 2 - head.y, w / 2 - head.x);
+    let d = ((want - f.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    f.a += Math.max(-1.2 * dt, Math.min(1.2 * dt, d));
+    const v = f.speed * (target ? 1.8 : 1);
+    head.x += Math.cos(f.a) * v * dt; head.y += Math.sin(f.a) * v * dt;
+    for (let i = 1; i < f.pts.length; i++) {
+      const p = f.pts[i], q = f.pts[i - 1];
+      const dx = p.x - q.x, dy = p.y - q.y, l = Math.hypot(dx, dy) || 1;
+      p.x = q.x + dx / l * f.seg; p.y = q.y + dy / l * f.seg;
+    }
+  }
+
+  function cell(grid, x, y, color, layer) {
+    const i = Math.floor(x / PITCH), j = Math.floor(y / PITCH);
+    if (i < 0 || j < 0 || i >= cols || j >= rows) return;
+    const k = j * cols + i;
+    if (layer >= (grid.layer[k] || 0)) { grid.color[k] = color; grid.layer[k] = layer; }
+  }
+
+  function line(grid, x0, y0, x1, y1, color, layer) {
+    const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (PITCH * 0.7));
+    for (let s = 0; s <= n; s++) cell(grid, x0 + (x1 - x0) * s / n, y0 + (y1 - y0) * s / n, color, layer);
+  }
+
+  // fish body half-width from nose (0) to tail base (1), as a fraction of the widest point
+  const PROFILE = [[0, .07], [.015, .3], [.04, .56], [.09, .76], [.17, .92], [.28, 1], [.42, .96], [.56, .78], [.69, .54], [.8, .32], [.89, .16], [1, .06]];
+  function widthAt(u) {
+    for (let i = 1; i < PROFILE.length; i++) {
+      if (u <= PROFILE[i][0]) {
+        const [a, wa] = PROFILE[i - 1], [b, wb] = PROFILE[i];
+        return wa + (wb - wa) * (u - a) / (b - a);
+      }
+    }
+    return 0.06;
+  }
+  // large contiguous koi patches rather than speckle
+  const patchAt = (u, v, s) => Math.sin(u * 7.2 + s) + 0.7 * Math.sin(u * 3.1 - s * 1.7) + 0.4 * Math.cos(v * 2.2 + s * 0.6) > 0.6;
+
+  function drawFish(grid, f, t) {
+    const n = f.pts.length, swim = t * 3.4 + f.phase, step = PITCH * 0.45;
+    const pos = f.pts.map((p, i) => {
+      const q = f.pts[Math.min(i + 1, n - 1)], r = f.pts[Math.max(i - 1, 0)];
+      const ang = Math.atan2(r.y - q.y, r.x - q.x), u = i / (n - 1);
+      const sway = Math.sin(swim - i * 0.5) * 6 * u * u;
+      return { x: p.x - Math.sin(ang) * sway, y: p.y + Math.cos(ang) * sway, ang };
+    });
+    const at = (u) => {
+      const x = Math.max(0, Math.min(1, u)) * (n - 1);
+      const i = Math.min(n - 2, Math.floor(x)), fr = x - i, a = pos[i], b = pos[i + 1];
+      return { x: a.x + (b.x - a.x) * fr, y: a.y + (b.y - a.y) * fr, ang: a.ang };
+    };
+    const maxHalf = f.len * 0.152;
+
+    // tail: a fan that flares from the peduncle and forks at the trailing edge
+    const tail = at(1), ta = tail.ang + Math.PI + Math.sin(swim) * 0.24;
+    const tc = Math.cos(ta), ts = Math.sin(ta), tnx = -ts, tny = tc;
+    const tLen = f.len * 0.32, tHalf = f.len * 0.2;
+    for (let d = 0; d <= tLen; d += step) {
+      const fr = d / tLen, hw = tHalf * (0.16 + 0.84 * fr);
+      for (let o = -hw; o <= hw; o += step) {
+        if (fr > 0.3 + 0.7 * (Math.abs(o) / hw)) continue;
+        cell(grid, tail.x + tc * d + tnx * o, tail.y + ts * d + tny * o, 'fin', 1);
+      }
+    }
+
+    // pectoral fins, swept back and fanning as it swims
+    for (const side of [-1, 1]) {
+      const b = at(0.3);
+      const fa = b.ang + Math.PI + side * (0.95 + Math.sin(swim * 0.9 + side) * 0.22);
+      const fc = Math.cos(fa), fs = Math.sin(fa), fl = f.len * 0.17;
+      for (let d = 0; d <= fl; d += step) {
+        const hw = f.len * 0.045 * (1 - d / fl) + step * 0.5;
+        for (let o = -hw; o <= hw; o += step) {
+          cell(grid, b.x + fc * d - fs * o, b.y + fs * d + fc * o, 'fin', 1);
+        }
+      }
+    }
+
+    // body: a filled cross-section at each point along the spine
+    for (let d = 0; d <= f.len; d += step) {
+      const u = d / f.len, p = at(u), hw = widthAt(u) * maxHalf;
+      const nx = -Math.sin(p.ang), ny = Math.cos(p.ang);
+      for (let o = -hw; o <= hw; o += step) {
+        const v = o / hw, edge = Math.abs(v) > 0.66 || u > 0.93;
+        const orange = patchAt(u, v, f.seed);
+        cell(grid, p.x + nx * o, p.y + ny * o, orange ? (edge ? 'deep' : 'orange') : edge ? 'shade' : 'body', 2);
+      }
+    }
+
+    for (let d = f.len * 0.3; d <= f.len * 0.8; d += step) {
+      const p = at(d / f.len);
+      cell(grid, p.x, p.y, 'shade', 3);
+    }
+
+    const e = at(0.08), er = widthAt(0.08) * maxHalf * 0.66;
+    for (const side of [-1, 1]) {
+      const ex = e.x - Math.sin(e.ang) * er * side, ey = e.y + Math.cos(e.ang) * er * side;
+      for (const dx of [-PITCH * 0.4, PITCH * 0.4]) for (const dy of [-PITCH * 0.4, PITCH * 0.4]) cell(grid, ex + dx, ey + dy, 'eye', 4);
+    }
+  }
+
+  function render(t, dt) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+    // faint sea
+    for (let i = 0; i < cols; i++) colSP[i] = Math.sin(colSK[i] + t * 0.15) * 2;
+    for (let j = 0; j < rows; j++) {
+      const y = j * PITCH, ny = y / h;
+      const rw = Math.sin(y * 0.012 + t * 0.2) * 2, re = Math.sin(y * 0.015 - t * 0.25) * 2;
+      const sb = -y * 0.05 - t, sa = Math.max(0, 1 - (1 - ny) * 1.8);
+      for (let i = 0; i < cols; i++) {
+        const west = colWA[i] * (0.5 + 0.5 * Math.sin(colPW[i] - t * 0.9 + rw));
+        const east = colEA[i] * (0.5 + 0.5 * Math.sin(colPE[i] - t * 0.8 + re));
+        const south = sa * (0.5 + 0.5 * Math.sin(sb + colSP[i]));
+        const v = (west + east + south) * colDim[i];
+        const level = v > 1.05 ? 3 : v > 0.8 ? 2 : v > 0.55 ? 1 : 0;
+        if (!level) continue;
+        const k = south >= west && south >= east ? 'south' : west >= east ? 'west' : 'east';
+        ctx.fillStyle = sea[k][level];
+        ctx.fillRect(i * PITCH, y, CELL, CELL);
+      }
+    }
+    // fish
+    const grid = { color: new Array(cols * rows), layer: new Uint8Array(cols * rows) };
+    for (const f of fish) { if (dt) step(f, t, dt); drawFish(grid, f, t); }
+    for (let k = 0; k < grid.color.length; k++) {
+      const c = grid.color[k];
+      if (!c) continue;
+      const x = (k % cols) * PITCH, y = Math.floor(k / cols) * PITCH;
+      ctx.fillStyle = paint[c][dimAt(x + CELL / 2)];
+      ctx.fillRect(x, y, CELL, CELL);
+    }
+    // food the visitor dropped
+    for (const p of food) {
+      ctx.fillStyle = paint.orange[dimAt(p.x)];
+      ctx.fillRect(Math.floor(p.x / PITCH) * PITCH, Math.floor(p.y / PITCH) * PITCH, CELL, CELL);
+    }
+    while (food.length && (t - food[0].t > 6 || fish.some((f) => Math.hypot(f.pts[0].x - food[0].x, f.pts[0].y - food[0].y) < 14))) food.shift();
+  }
+
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    if (now - last < 1000 / FPS) return;
+    const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
+    last = now;
+    render(now / 1000, dt);
+  }
+
+  function start() {
+    cancelAnimationFrame(raf); last = 0;
+    readPalette(); resize();
+    if (motion.matches) {
+      for (const f of fish) for (let s = 0; s < 40; s++) step(f, s / 10, 0.1);
+      render(4, 0);
+    } else raf = requestAnimationFrame(frame);
+  }
+
+  let pending;
+  addEventListener('resize', () => { clearTimeout(pending); pending = setTimeout(start, 150); });
+  motion.addEventListener('change', start);
+  addEventListener('pointerdown', (e) => {
+    if (!motion.matches && food.length < 8) food.push({ x: e.clientX, y: e.clientY, t: performance.now() / 1000 });
+  }, { passive: true });
+  start();
+})();
+</script>
 </body>
 </html>
