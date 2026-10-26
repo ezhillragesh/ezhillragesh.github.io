@@ -1,0 +1,34 @@
+# Ezhill Ragesh
+
+> Software engineer in Chennai, India, working on platforms, developer tooling and applied AI. Software Engineer at Ramco Systems. Researches and files patents on retrieval-augmented generation (RAG), AI security and knowledge graphs. Writes about how software works under the hood. Published name: Ezhill Ragesh K T.
+
+## Work
+
+- Software Engineer, Ramco Systems (2025–present): shared infrastructure for enterprise products, including build and packaging, AI-agent-assisted review workflows, design-token theming, WCAG accessibility and release reliability.
+- Software Developer Intern, Minuscule Technologies (2023): health-analytics dashboard using Fitbit and Apple Watch data through Google Fit and HealthKit.
+
+## Research and patents
+
+- System and Method for Human Presence Verified Access Control of Retrieval-Augmented Generation Data. Indian patent application 202641076803, published July 2026, filed through VIT.
+- System and Method for Preventing Large Language Model Prompt Injection and Identity Spoofing. Indian patent application 202641022703, filed through VIT.
+- CT-KG-RAG: A Threat Knowledge Graph Framework for Graph-Structural Intervention Simulation and Hypothetical Attack-Path Reasoning. Peer-reviewed IEEE conference paper, 2026.
+- Clarifying the Role of Non-Linear Models in Financial Markets and Stock Forecasting. Under review.
+
+## Projects
+
+- [Perf Intelligence](https://github.com/ezhillragesh/performance-engine): independent tool that links user interactions, network requests and React renders into causal traces and reports performance and accessibility issues with evidence.
+- [SourceGuide](https://sourceguide.vercel.app/): finds beginner-friendly issues across Google Summer of Code organisations; 1,000+ users.
+
+## Education
+
+- B.Tech, Computer Science and Business Systems, Vellore Institute of Technology (2021–2025).
+
+## Links
+
+- [Website](https://ezhillragesh.github.io/)
+- [Résumé (PDF)](https://ezhillragesh.github.io/resume.pdf)
+- [Medium](https://medium.com/@ezhillragesh)
+- [GitHub](https://github.com/ezhillragesh)
+- [LinkedIn](https://linkedin.com/in/ezhillragesh)
+- [X](https://x.com/ezhillragesh)
+- Email: ragesh@duck.com
