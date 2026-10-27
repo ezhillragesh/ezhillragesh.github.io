@@ -8,7 +8,7 @@
 <meta name="author" content="Ezhill Ragesh">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0a0a0a">
+<meta name="theme-color" content="#1a1917">
 <link rel="canonical" href="https://ezhillragesh.github.io/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/apple-touch-icon.png" type="image/png" sizes="180x180">
@@ -68,11 +68,11 @@
 <style>
   :root {
     color-scheme: dark;
-    --bg: #0a0a0a;
+    --bg: #1a1917;
     --text: #f5f5f7;
     --muted: #a1a1a6;
     --underline: #8e8e93;
-    --line: #3a3a3c;
+    --line: #3a3936;
     --focus: #4da3ff;
   }
 
@@ -349,86 +349,138 @@
 </footer>
 
 <script>
-// A pond of koi drawn on a character grid: every cell is a small square with a
-// typed glyph in it, so the fish read as terminal art rather than flat pixels.
+// A pond of koi drawn on a character grid. Each cell is a small square with a
+// typed glyph in it; the fish only fade on the lines where text sits on top.
 (() => {
   const canvas = document.querySelector('.sea');
   const ctx = canvas.getContext('2d', { alpha: false });
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
-  const FPS = 14;
-  const PAL = {
-    pale: '#e0e0e0', body: '#b8b8b8', mid: '#8c8c8c', edge: '#5e5e5e',
-    faint: '#3c3c3c', koi: '#d4622f', deep: '#9f4320', eye: '#e8e8e8'
+  const FPS = 20;
+  const C = {
+    pale: '#d2d1ca', body: '#b0afa8', mid: '#86857f', fin: '#55544f', shadow: '#2d2c29',
+    eye: '#121110', iris: '#e4e3dc', whisker: '#9a9993', ring: '#77766f'
   };
-  // dimmer behind the reading column so body text keeps its contrast
-  const LEVELS = [0.22, 0.5, 0.75, 1];
-  const SCALE = ['x', 'x', 'o', 'x', '*', '+'];
-  const SOFT = ['.', ',', ':', '-'];
-  const FIN = ['/', '\\', '|', '-'];
+  const ORANGES = [['#cf5d2d', '#9b4321'], ['#db7432', '#a65322'], ['#c04c29', '#8d371d'], ['#e38d3e', '#b06627']];
+  const SCALE = ['x', 'x', 'o', 'x', '*', '+', 'x', '%'];
+  const SOFT = ['.', ',', ':', '.'];
+  // fish strength under a line of light text, then of grey text (keeps WCAG AA)
+  const UNDER = [1, 0.4, 0.15];
 
-  let CELL = 14, GAP = 2;
-  let w, h, cols, rows, cx, column, raf = 0, last = 0;
-  let bg, paint, ink, dimCol, colorAt, glyphAt, layerAt;
-  let fish = [], ripples = [];
+  let CELL = 13, GAP = 2;
+  let w, h, cols, rows, raf = 0, last = 0, bg, bgHex;
+  let fillAt, glyphAt, inkAt, layerAt, mask, maskAt = NaN;
+  let lines = [], fish = [], ripples = [];
+  const shades = new Map(), inks = new Map();
 
   const hex = (v) => [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16));
-  const mix = (a, b, t) => `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(',')})`;
+  const toHex = (c) => '#' + c.map((x) => Math.round(x).toString(16).padStart(2, '0')).join('');
+  const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const lum = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
   const hash = (a, b, c) => {
     let x = (a * 374761393 + b * 668265263 + c * 1442695040) | 0;
     x = Math.imul(x ^ (x >>> 13), 1274126177);
     return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
   };
+  // pick the ASCII stroke closest to a direction (screen y points down)
+  const stroke = (a) => {
+    const t = ((a % Math.PI) + Math.PI) % Math.PI;
+    return t < 0.39 || t > 2.75 ? '-' : t < 1.18 ? '\\' : t < 1.96 ? '|' : '/';
+  };
 
-  function readPalette() {
-    const base = hex(getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());
-    bg = `rgb(${base})`;
-    paint = {}; ink = {};
-    for (const [k, v] of Object.entries(PAL)) {
-      const c = hex(v);
-      paint[k] = LEVELS.map((t) => mix(base, c, t));
-      // the glyph sits a few shades under its own cell
-      ink[k] = LEVELS.map((t) => mix(base, c, t * (k === 'eye' ? 0.1 : 0.42)));
+  function shade(color, lv) {
+    const key = color + lv;
+    let v = shades.get(key);
+    if (!v) {
+      const c = hex(color), t = UNDER[lv];
+      v = `rgb(${bg.map((x, i) => Math.round(x + (c[i] - x) * t)).join(',')})`;
+      shades.set(key, v);
+    }
+    return v;
+  }
+  // glyphs sit a few shades darker than a light cell, or lighter than a dark one
+  function inkOf(color) {
+    let v = inks.get(color);
+    if (!v) {
+      const c = hex(color), to = lum(c) > 0.12 ? bg : [200, 199, 192];
+      v = toHex(c.map((x, i) => x + (to[i] - x) * 0.5));
+      inks.set(color, v);
+    }
+    return v;
+  }
+
+  function measureText() {
+    lines = [];
+    const range = document.createRange(), sx = scrollX, sy = scrollY;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const el = n.parentElement;
+      if (!el || !n.textContent.trim() || el.closest('script, style, .sr')) continue;
+      const rgb = getComputedStyle(el).color.match(/[\d.]+/g).slice(0, 3).map(Number);
+      const lv = lum(rgb) > 0.6 ? 1 : 2;
+      range.selectNodeContents(n);
+      for (const r of range.getClientRects()) {
+        if (r.width < 1) continue;
+        lines.push(r.left + sx - 4, r.top + sy - 2, r.right + sx + 4, r.bottom + sy + 2, lv);
+      }
+    }
+    maskAt = NaN;
+  }
+
+  function buildMask() {
+    if (maskAt === scrollY) return;
+    maskAt = scrollY;
+    mask.fill(0);
+    const sx = scrollX, sy = scrollY;
+    for (let q = 0; q < lines.length; q += 5) {
+      const top = lines[q + 1] - sy, bot = lines[q + 3] - sy;
+      if (bot < 0 || top > h) continue;
+      const i0 = Math.max(0, Math.floor((lines[q] - sx) / CELL)), i1 = Math.min(cols - 1, Math.floor((lines[q + 2] - sx) / CELL));
+      const j0 = Math.max(0, Math.floor(top / CELL)), j1 = Math.min(rows - 1, Math.floor(bot / CELL));
+      const lv = lines[q + 4];
+      for (let j = j0; j <= j1; j++) {
+        for (let i = i0; i <= i1; i++) { const k = j * cols + i; if (lv > mask[k]) mask[k] = lv; }
+      }
     }
   }
 
   function makeFish(i) {
-    const span = Math.min(w, h);
-    const len = (span < 620 ? 150 + Math.random() * 60 : 230 + Math.random() * 120);
+    const small = w < 700;
+    const len = (small ? Math.min(250, Math.max(180, w * 0.42)) : 270 + Math.random() * 90) * (0.88 + Math.random() * 0.24);
     const segs = 18, a = Math.random() * Math.PI * 2;
-    const x = Math.random() * w, y = Math.random() * h;
+    const x = w * (0.15 + Math.random() * 0.7), y = h * (0.1 + Math.random() * 0.8);
+    const [orange, deep] = ORANGES[(i + Math.floor(Math.random() * ORANGES.length)) % ORANGES.length];
     return {
       pts: Array.from({ length: segs }, (_, k) => ({ x: x - Math.cos(a) * k * len / segs, y: y - Math.sin(a) * k * len / segs })),
-      len, seg: len / segs, a, speed: 13 + Math.random() * 9, seed: 1 + i * 37 + Math.floor(Math.random() * 500), phase: Math.random() * 6
+      len, seg: len / segs, a, speed: len * (0.15 + Math.random() * 0.06), phase: Math.random() * 6,
+      seed: 1 + i * 37 + Math.floor(Math.random() * 500), orange, deep, spots: -0.1 + Math.random() * 0.6
     };
   }
 
   function resize() {
     const dpr = Math.min(devicePixelRatio || 1, 2);
     w = innerWidth; h = innerHeight;
-    CELL = w < 620 ? 11 : 14; GAP = w < 620 ? 2 : 2;
-    canvas.width = w * dpr; canvas.height = h * dpr;
+    CELL = w < 700 ? 10 : 13; GAP = w < 700 ? 1.5 : 2;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `${Math.round((CELL - GAP) * 0.82)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+    ctx.font = `${Math.round((CELL - GAP) * 0.9)}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
     cols = Math.ceil(w / CELL) + 1; rows = Math.ceil(h / CELL) + 1;
-    cx = w / 2; column = Math.min(w, 660) / 2;
-    dimCol = new Uint8Array(cols);
-    for (let i = 0; i < cols; i++) {
-      const e = Math.abs(i * CELL + CELL / 2 - cx) / column;
-      dimCol[i] = e < 1 ? 0 : e < 1.12 ? 1 : e < 1.3 ? 2 : 3;
-    }
-    colorAt = new Array(cols * rows); glyphAt = new Array(cols * rows); layerAt = new Uint8Array(cols * rows);
-    const n = Math.max(2, Math.min(5, Math.round((w * h) / 330000)));
-    while (fish.length < n) fish.push(makeFish(fish.length));
-    fish.length = n;
+    const n = cols * rows;
+    fillAt = new Array(n); glyphAt = new Array(n); inkAt = new Array(n);
+    layerAt = new Uint8Array(n); mask = new Uint8Array(n);
+    const count = w < 700 ? 3 : Math.max(3, Math.min(6, Math.round((w * h) / 300000)));
+    while (fish.length < count) fish.push(makeFish(fish.length));
+    fish.length = count;
+    measureText();
   }
 
-  function set(x, y, color, glyph, layer) {
+  function set(x, y, fill, glyph, ink, layer) {
     const i = Math.floor(x / CELL), j = Math.floor(y / CELL);
     if (i < 0 || j < 0 || i >= cols || j >= rows) return;
     const k = j * cols + i;
-    if (layer >= layerAt[k]) { colorAt[k] = color; glyphAt[k] = glyph; layerAt[k] = layer; }
+    if (layer < layerAt[k]) return;
+    layerAt[k] = layer; fillAt[k] = fill; glyphAt[k] = glyph; inkAt[k] = ink;
   }
 
   // body half-width from nose (0) to tail base (1)
@@ -442,22 +494,16 @@
     }
     return 0.06;
   }
-  const isKoi = (u, v, s) => Math.sin(u * 7.2 + s) + 0.7 * Math.sin(u * 3.1 - s * 1.7) + 0.4 * Math.cos(v * 2.2 + s * 0.6) > 0.55;
+  const koiAt = (u, v, s) => Math.sin(u * 7.2 + s) + 0.7 * Math.sin(u * 3.1 - s * 1.7) + 0.4 * Math.cos(v * 2.2 + s * 0.6);
 
   function step(f, t, dt) {
-    const head = f.pts[0];
+    const head = f.pts[0], m = f.len * 0.6;
     let want = f.a + Math.sin(t * 0.25 + f.seed) * 0.5 + Math.sin(t * 0.09 + f.seed * 2) * 0.7;
-    const look = ripples.find((r) => t - r.t < 2.4 && Math.hypot(r.x - head.x, r.y - head.y) < 520);
-    const m = 90;
+    const look = ripples.find((r) => t - r.t < 2.2 && Math.hypot(r.x - head.x, r.y - head.y) < 480);
     if (look) want = Math.atan2(look.y - head.y, look.x - head.x);
     else if (head.x < -m || head.x > w + m || head.y < -m || head.y > h + m) want = Math.atan2(h / 2 - head.y, w / 2 - head.x);
-    else if (w > 900) {
-      // drift out towards the margins, where the fish are not dimmed behind text
-      const push = Math.max(0, 1 - Math.abs(head.x - cx) / column);
-      want = Math.atan2(Math.sin(want), Math.cos(want) + (head.x < cx ? -1 : 1) * push * 1.1);
-    }
     const d = ((want - f.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-    f.a += Math.max(-0.9 * dt, Math.min(0.9 * dt, d));
+    f.a += Math.max(-1.1 * dt, Math.min(1.1 * dt, d));
     const v = f.speed * (look ? 1.7 : 1);
     head.x += Math.cos(f.a) * v * dt; head.y += Math.sin(f.a) * v * dt;
     for (let i = 1; i < f.pts.length; i++) {
@@ -468,11 +514,11 @@
   }
 
   function drawFish(f, t) {
-    const n = f.pts.length, swim = t * 2.6 + f.phase, gap = CELL * 0.55;
+    const n = f.pts.length, swim = t * 4.2 + f.phase, gap = CELL * 0.5;
     const pos = f.pts.map((p, i) => {
       const q = f.pts[Math.min(i + 1, n - 1)], r = f.pts[Math.max(i - 1, 0)];
       const ang = Math.atan2(r.y - q.y, r.x - q.x), u = i / (n - 1);
-      const sway = Math.sin(swim - i * 0.5) * 6 * u * u;
+      const sway = Math.sin(swim - i * 0.52) * 8 * u * u;
       return { x: p.x - Math.sin(ang) * sway, y: p.y + Math.cos(ang) * sway, ang };
     });
     const at = (u) => {
@@ -480,21 +526,30 @@
       const i = Math.min(n - 2, Math.floor(x)), fr = x - i, a = pos[i], b = pos[i + 1];
       return { x: a.x + (b.x - a.x) * fr, y: a.y + (b.y - a.y) * fr, ang: a.ang };
     };
-    const maxHalf = f.len * 0.152;
+    const maxHalf = f.len * 0.15;
 
-    // tail fan, forked at the trailing edge
-    const tail = at(1), ta = tail.ang + Math.PI + Math.sin(swim) * 0.22;
+    // shadow on the pond floor, offset down and right
+    const sx = CELL * 0.9, sy = CELL * 1.3;
+    for (let d = 0; d <= f.len; d += gap) {
+      const u = d / f.len, p = at(u), hw = widthAt(u) * maxHalf;
+      const nx = -Math.sin(p.ang), ny = Math.cos(p.ang);
+      for (let o = -hw; o <= hw; o += gap) {
+        const dot = hash(Math.round(d / gap), Math.round(o / gap), f.seed + 3) > 0.82;
+        set(p.x + nx * o + sx, p.y + ny * o + sy, C.shadow, dot ? '.' : null, inkOf(C.shadow), 1);
+      }
+    }
+
+    // tail fan: dark cells with rays that spread with the fan
+    const tail = at(1), ta = tail.ang + Math.PI + Math.sin(swim) * 0.34;
     const tc = Math.cos(ta), ts = Math.sin(ta), tnx = -ts, tny = tc;
     const tLen = f.len * 0.32, tHalf = f.len * 0.2;
     for (let d = 0; d <= tLen; d += gap) {
       const fr = d / tLen, hw = tHalf * (0.16 + 0.84 * fr);
       for (let o = -hw; o <= hw; o += gap) {
-        const vv = Math.abs(o) / hw;
-        if (fr > 0.3 + 0.7 * vv) continue;
-        const x = tail.x + tc * d + tnx * o, y = tail.y + ts * d + tny * o;
+        if (fr > 0.3 + 0.7 * (Math.abs(o) / hw)) continue;
         const r = hash(Math.round(d / gap), Math.round(o / gap), f.seed);
-        if (fr > 0.45 && r > 0.72) continue;
-        set(x, y, fr > 0.5 ? 'faint' : 'edge', FIN[(r * 4) | 0], 1);
+        const fill = fr < 0.4 ? C.fin : C.shadow;
+        set(tail.x + tc * d + tnx * o, tail.y + ts * d + tny * o, fill, r > 0.72 ? stroke(ta + (o / tHalf) * 0.7) : null, inkOf(fill), 2);
       }
     }
 
@@ -505,71 +560,70 @@
       const fc = Math.cos(fa), fs = Math.sin(fa), fl = f.len * 0.17;
       for (let d = 0; d <= fl; d += gap) {
         const hw = f.len * 0.04 * (1 - d / fl) + gap * 0.5;
-        for (let o = -hw; o <= hw; o += gap) {
-          set(b.x + fc * d - fs * o, b.y + fs * d + fc * o, 'edge', side < 0 ? '/' : '\\', 1);
+        for (let o = -hw; o <= hw; o += gap) set(b.x + fc * d - fs * o, b.y + fs * d + fc * o, C.fin, d > fl * 0.4 && o === -hw ? stroke(fa) : null, inkOf(C.fin), 3);
+      }
+    }
+
+    // body: white head, koi patches further back; glyphs ride with the fish
+    for (let d = 0; d <= f.len; d += gap) {
+      const u = d / f.len, p = at(u), hw = widthAt(u) * maxHalf;
+      const nx = -Math.sin(p.ang), ny = Math.cos(p.ang), gu = Math.round(u * 46);
+      for (let o = -hw; o <= hw; o += gap) {
+        const v = o / hw, r = hash(gu, Math.round(v * 5), f.seed);
+        const rim = Math.abs(v) > 0.74 || u > 0.95;
+        const koi = u > 0.14 && koiAt(u, v, f.seed) > f.spots;
+        const fill = koi ? (rim ? f.deep : f.orange) : rim ? C.mid : r > 0.5 ? C.pale : C.body;
+        set(p.x + nx * o, p.y + ny * o, fill, rim ? SOFT[(r * 4) | 0] : SCALE[(r * 8) | 0], inkOf(fill), 4);
+      }
+    }
+
+    // whiskers: strokes only, curling out from the nose
+    const nose = at(0);
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 2; k++) {
+        const base = nose.ang + side * (0.5 + k * 0.5) + Math.sin(swim * 0.7 + side + k) * 0.12;
+        for (let d = CELL * 1.05; d <= CELL * (2.3 - k * 0.5); d += CELL * 0.75) {
+          const a = base + side * (d / CELL) * 0.15;
+          set(nose.x + Math.cos(a) * d, nose.y + Math.sin(a) * d, null, stroke(a), C.whisker, 5);
         }
       }
     }
 
-    // body: glyphs keyed to the fish's own coordinates, so scales stay put as it swims
-    for (let d = 0; d <= f.len; d += gap) {
-      const u = d / f.len, p = at(u), hw = widthAt(u) * maxHalf;
-      const nx = -Math.sin(p.ang), ny = Math.cos(p.ang);
-      const gu = Math.round(u * 46);
-      for (let o = -hw; o <= hw; o += gap) {
-        const v = o / hw, gv = Math.round(v * 5);
-        const r = hash(gu, gv, f.seed);
-        const rim = Math.abs(v) > 0.72 || u > 0.94 || u < 0.03;
-        const koi = isKoi(u, v, f.seed);
-        const color = koi ? (rim ? 'deep' : 'koi') : rim ? 'mid' : r > 0.55 ? 'pale' : 'body';
-        set(p.x + nx * o, p.y + ny * o, color, rim ? SOFT[(r * 4) | 0] : SCALE[(r * 6) | 0], 2);
-      }
-    }
-
-    // barbels, then the eyes
-    const nose = at(0.02);
+    // eyes
+    const e = at(0.085), er = widthAt(0.085) * maxHalf * 0.7;
     for (const side of [-1, 1]) {
-      const ba = nose.ang + side * 0.5;
-      for (let d = CELL; d <= CELL * 2.2; d += gap) {
-        set(nose.x + Math.cos(ba) * d, nose.y + Math.sin(ba) * d, 'faint', side < 0 ? '\\' : '/', 1);
-      }
-    }
-    const e = at(0.09), er = widthAt(0.09) * maxHalf * 0.62;
-    for (const side of [-1, 1]) {
-      set(e.x - Math.sin(e.ang) * er * side, e.y + Math.cos(e.ang) * er * side, 'eye', 'o', 3);
+      set(e.x - Math.sin(e.ang) * er * side, e.y + Math.cos(e.ang) * er * side, C.eye, 'o', C.iris, 6);
     }
   }
 
+  // a dashed ring: each mark is the stroke that follows the circle at that point
   function drawRipple(r, t) {
-    const age = t - r.t, rad = age * 165, fade = 1 - age / 2.6;
-    if (fade <= 0 || rad < CELL) return;
-    const n = Math.max(32, Math.round((rad * 2 * Math.PI) / (CELL * 0.8)));
+    const age = t - r.t, rad = 10 + age * 120, fade = 1 - age / 2.4;
+    if (fade <= 0) return;
+    const n = Math.max(16, Math.round((rad * 2 * Math.PI) / CELL));
     for (let i = 0; i < n; i++) {
+      if (hash(i, r.seed, 0) > fade * 0.85) continue;
       const a = (i / n) * Math.PI * 2;
-      const x = r.x + Math.cos(a) * rad, y = r.y + Math.sin(a) * rad;
-      if (hash(Math.floor(x / CELL), Math.floor(y / CELL), r.seed) > fade * 0.6) continue;
-      set(x, y, 'faint', SOFT[(hash(i, r.seed, 7) * 4) | 0], 0);
+      set(r.x + Math.cos(a) * rad, r.y + Math.sin(a) * rad, null, stroke(a + Math.PI / 2), C.ring, 1);
     }
   }
 
   function render(t, dt) {
-    ctx.fillStyle = bg;
+    buildMask();
+    ctx.fillStyle = bgHex;
     ctx.fillRect(0, 0, w, h);
-    colorAt.fill(undefined); layerAt.fill(0);
+    layerAt.fill(0);
     for (const r of ripples) drawRipple(r, t);
     for (const f of fish) { if (dt) step(f, t, dt); drawFish(f, t); }
     const size = CELL - GAP, mid = size / 2;
-    for (let k = 0; k < colorAt.length; k++) {
-      const c = colorAt[k];
-      if (!c) continue;
-      const i = k % cols, j = (k - i) / cols, lvl = dimCol[i];
-      const x = i * CELL, y = j * CELL;
-      ctx.fillStyle = paint[c][lvl];
-      ctx.fillRect(x, y, size, size);
-      const g = glyphAt[k];
-      if (g) { ctx.fillStyle = ink[c][lvl]; ctx.fillText(g, x + mid, y + mid + 0.5); }
+    for (let k = 0; k < layerAt.length; k++) {
+      if (!layerAt[k]) continue;
+      const i = k % cols, j = (k - i) / cols, lv = mask[k], x = i * CELL, y = j * CELL;
+      const fill = fillAt[k], g = glyphAt[k];
+      if (fill) { ctx.fillStyle = shade(fill, lv); ctx.fillRect(x, y, size, size); }
+      if (g) { ctx.fillStyle = shade(inkAt[k], lv); ctx.fillText(g, x + mid, y + mid + 0.5); }
     }
-    while (ripples.length && t - ripples[0].t > 2.7) ripples.shift();
+    while (ripples.length && t - ripples[0].t > 2.4) ripples.shift();
   }
 
   function frame(now) {
@@ -582,20 +636,29 @@
 
   function start() {
     cancelAnimationFrame(raf); last = 0;
-    readPalette(); resize();
+    bgHex = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    bg = hex(bgHex);
+    shades.clear(); inks.clear();
+    resize();
     if (motion.matches) {
       for (const f of fish) for (let s = 0; s < 40; s++) step(f, s / 8, 0.12);
       render(5, 0);
     } else raf = requestAnimationFrame(frame);
   }
 
-  let pending;
+  let pending, still = 0;
   addEventListener('resize', () => { clearTimeout(pending); pending = setTimeout(start, 150); });
   motion.addEventListener('change', start);
+  // with reduced motion there is no loop, so redraw the still pond as text scrolls over it
+  addEventListener('scroll', () => {
+    if (motion.matches && !still) still = requestAnimationFrame(() => { still = 0; render(5, 0); });
+  }, { passive: true });
   addEventListener('pointerdown', (e) => {
     if (!motion.matches && ripples.length < 4) ripples.push({ x: e.clientX, y: e.clientY, t: performance.now() / 1000, seed: 1 + Math.floor(Math.random() * 900) });
   }, { passive: true });
   start();
+  // re-measure text when the layout changes (a summary opening, fonts, rotation)
+  new ResizeObserver(() => { measureText(); if (motion.matches) render(5, 0); }).observe(document.body);
 })();
 </script>
 </body>
