@@ -14,11 +14,6 @@
 - CT-KG-RAG: A Threat Knowledge Graph Framework for Graph-Structural Intervention Simulation and Hypothetical Attack-Path Reasoning. Peer-reviewed IEEE conference paper, 2026.
 - Clarifying the Role of Non-Linear Models in Financial Markets and Stock Forecasting. Under review.
 
-## Projects
-
-- [Perf Intelligence](https://github.com/ezhillragesh/performance-engine): independent tool that links user interactions, network requests and React renders into causal traces and reports performance and accessibility issues with evidence.
-- [SourceGuide](https://sourceguide.vercel.app/): finds beginner-friendly issues across Google Summer of Code organisations; 1,000+ users.
-
 ## Education
 
 - B.Tech, Computer Science and Business Systems, Vellore Institute of Technology (2021–2025).
@@ -26,6 +21,7 @@
 ## Links
 
 - [Website](https://ezhillragesh.github.io/)
+- [Research and patents](https://ezhillragesh.github.io/research/)
 - [Résumé (PDF)](https://ezhillragesh.github.io/resume.pdf)
 - [Medium](https://medium.com/@ezhillragesh)
 - [GitHub](https://github.com/ezhillragesh)
