@@ -1,8 +1,4 @@
 /*
- * Koi pond, ported with permission from Dao Ho's portfolio
- * (https://github.com/Dao-Ho/portfolio, src/app/components/koi-pond).
- * Original design and code by Dao Ho: https://www.daoho.dev
- *
  * Changes for this site: plain JavaScript instead of TypeScript and React,
  * dark palette only, no analytics, and on narrow screens the koi fade only
  * under each line of text, since this page scrolls instead of fitting one screen.
