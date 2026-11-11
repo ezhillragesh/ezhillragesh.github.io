@@ -35,10 +35,12 @@ body {
   pointer-events: none;
 }
 
+/* Content hugs the left edge, leaving open water for the koi on the right. */
 .wrap {
-  max-width: 36rem;
-  margin: 0 auto;
-  padding: 0 1.25rem;
+  --pad: clamp(1.25rem, 6vw, 5.5rem);
+  max-width: calc(34rem + 2 * var(--pad));
+  margin: 0;
+  padding: 0 var(--pad);
 }
 .top { padding-top: clamp(2.5rem, 9vh, 6rem); }
 
@@ -230,15 +232,40 @@ details p {
   border-left: 1px solid var(--line);
 }
 
-.links li { margin-bottom: 0.25rem; }
-
 footer .wrap { padding-bottom: 4rem; }
 footer p {
-  margin: 4.5rem 0 0;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
+  margin: 3.5rem 0 0;
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+/* Home fits one screen: open water above, the text anchored to the bottom-left.
+   min-height (not a fixed height), so short screens still scroll instead of cutting text off. */
+.home {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+.home > header { margin-top: auto; padding-top: 3rem; }
+.home .intro { margin-top: 1.75rem; }
+.home footer .wrap { padding-bottom: clamp(2rem, 7vh, 4.5rem); }
+.home footer p { margin-top: 1.25rem; }
+
+/* Contact links on one line: ragesh@duck.com / medium / github / … */
+.socials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  margin-top: 1.5rem;
+}
+.socials li { margin: 0; }
+/* the slash ends the item before it, so a wrapped line never starts with one */
+.socials li:not(:last-child)::after {
+  content: "/";
+  content: "/" / "";
+  margin-left: 0.5rem;
+  color: var(--muted);
 }
 
 ::selection {
