@@ -140,15 +140,6 @@ li:last-child { margin-bottom: 0; }
 /* Inline mentions that open a small card: hover or keyboard focus on a pointer, tap on touch. */
 .cite { position: relative; display: inline; }
 .cite-name {
-  display: inline;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  line-height: inherit;
-  text-align: inherit;
   text-decoration: underline;
   text-decoration-color: var(--underline);
   text-decoration-thickness: 1px;
